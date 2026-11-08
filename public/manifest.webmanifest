@@ -1,0 +1,14 @@
+{
+  "name": "QR-Order",
+  "short_name": "QR-Order",
+  "description": "Commandez depuis votre table, suivez votre commande et payez depuis votre téléphone.",
+  "lang": "fr",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#FAF7F2",
+  "theme_color": "#CC4A12",
+  "icons": [
+    { "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}
