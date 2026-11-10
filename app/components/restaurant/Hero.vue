@@ -1,56 +1,76 @@
 <script setup lang="ts">
+/**
+ * En-tête du restaurant, style application de commande : grande bannière,
+ * logo en médaillon, nom, ligne d'informations (note, horaires) et pastilles.
+ */
 import type { PublicRestaurant } from '~/types/api';
-import { localDay, slotsLabel } from '~/utils/hours';
+import { localClock, openingSummary } from '~/utils/hours';
 
-const props = defineProps<{ restaurant: PublicRestaurant; tableLabel?: string | null; counter?: boolean }>();
+const props = defineProps<{
+  restaurant: PublicRestaurant;
+  tableLabel?: string | null;
+  counter?: boolean;
+  rating?: { average: number | null; count: number } | null;
+  /** Temps de préparation indicatif (minutes). */
+  prepMinutes?: number | null;
+}>();
+defineEmits<{ info: [] }>();
 
-const todayHours = computed(() =>
-  slotsLabel(props.restaurant.openingHours, localDay(props.restaurant.timezone)),
-);
-const closedLabel = computed(() =>
-  props.restaurant.reason === 'CLOSURE' ? 'Fermeture exceptionnelle' : 'Fermé',
-);
+const opening = computed(() => {
+  const { day, minutes } = localClock(props.restaurant.timezone);
+  return props.restaurant.reason === 'CLOSURE'
+    ? 'Fermeture exceptionnelle'
+    : openingSummary(props.restaurant.openingHours, day, minutes, props.restaurant.isOpen);
+});
+const mode = computed(() => (props.tableLabel ? `Sur place · ${props.tableLabel}` : 'À emporter'));
 </script>
 
 <template>
   <section>
-    <div class="relative h-36 overflow-hidden bg-primary-100 dark:bg-primary-950">
-      <img
-        v-if="restaurant.bannerUrl"
-        :src="restaurant.bannerUrl"
-        alt=""
-        class="size-full object-cover"
-        loading="eager"
-      >
-      <div v-else class="size-full bg-linear-to-br from-primary-400 to-primary-700" />
-      <div class="absolute inset-0 bg-linear-to-t from-black/40 to-transparent" />
+    <!-- Bannière -->
+    <div class="relative h-52 overflow-hidden bg-elevated">
+      <img v-if="restaurant.bannerUrl" :src="restaurant.bannerUrl" alt="" class="size-full object-cover" loading="eager">
+      <div v-else class="size-full bg-linear-to-br from-primary-400 via-primary-600 to-primary-800" />
+      <div class="absolute inset-0 bg-linear-to-b from-black/35 via-transparent to-black/10" />
     </div>
 
-    <div class="relative -mt-10 px-4">
-      <div class="flex items-end gap-3">
-        <div class="flex size-20 shrink-0 items-center justify-center overflow-hidden rounded-2xl border-4 border-default bg-default shadow-md">
-          <img v-if="restaurant.logoUrl" :src="restaurant.logoUrl" :alt="restaurant.name" class="size-full object-cover">
-          <span v-else class="font-display text-3xl font-semibold text-primary">{{ restaurant.name.charAt(0) }}</span>
-        </div>
-        <div class="flex flex-wrap gap-1.5 pb-1">
-          <UBadge
-            :color="restaurant.isOpen ? 'success' : 'error'"
-            variant="subtle"
-            :icon="restaurant.isOpen ? 'i-lucide-circle-check' : 'i-lucide-moon'"
-            :label="restaurant.isOpen ? 'Ouvert' : closedLabel"
-          />
-          <UBadge v-if="tableLabel" color="primary" variant="solid" icon="i-lucide-armchair" :label="tableLabel" />
-          <UBadge v-else-if="counter" color="primary" variant="solid" icon="i-lucide-shopping-bag" label="À emporter" />
-        </div>
+    <div class="relative px-4">
+      <!-- Logo en médaillon -->
+      <div class="-mt-9 flex size-[4.5rem] items-center justify-center overflow-hidden rounded-full border-4 border-default bg-default shadow-md">
+        <img v-if="restaurant.logoUrl" :src="restaurant.logoUrl" :alt="restaurant.name" class="size-full object-cover">
+        <span v-else class="text-2xl font-bold text-primary">{{ restaurant.name.charAt(0) }}</span>
       </div>
 
-      <h1 class="mt-3 font-display text-2xl font-semibold text-highlighted">{{ restaurant.name }}</h1>
-      <p v-if="restaurant.description" class="mt-1 line-clamp-2 text-sm text-muted">{{ restaurant.description }}</p>
-      <p class="mt-2 flex items-center gap-1.5 text-xs text-muted">
-        <UIcon name="i-lucide-clock" class="size-3.5" />
-        Aujourd'hui : {{ todayHours }}
-        <span v-if="restaurant.city">· {{ restaurant.city }}</span>
-      </p>
+      <h1 class="mt-2 text-[1.75rem] leading-tight font-bold tracking-tight text-highlighted">{{ restaurant.name }}</h1>
+
+      <!-- Ligne d'informations -->
+      <button type="button" class="mt-1 flex flex-wrap items-center gap-x-1.5 text-left text-sm text-muted" @click="$emit('info')">
+        <template v-if="rating?.average">
+          <UIcon name="i-lucide-star" class="size-3.5 text-highlighted" />
+          <span class="font-semibold text-highlighted">{{ rating.average.toLocaleString('fr-FR') }}</span>
+          <span>({{ rating.count }})</span>
+          <span aria-hidden="true">·</span>
+        </template>
+        <span :class="restaurant.isOpen ? '' : 'font-medium text-error'">{{ opening }}</span>
+        <span aria-hidden="true">·</span>
+        <span class="font-medium text-highlighted underline-offset-2 hover:underline">Infos</span>
+      </button>
+
+      <!-- Pastilles -->
+      <div class="no-scrollbar mt-3 flex gap-2 overflow-x-auto">
+        <span class="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-elevated px-3 py-1.5 text-sm font-medium">
+          <UIcon :name="tableLabel ? 'i-lucide-armchair' : 'i-lucide-shopping-bag'" class="size-4" />
+          {{ counter ? 'À emporter · comptoir' : mode }}
+        </span>
+        <span v-if="prepMinutes" class="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-elevated px-3 py-1.5 text-sm font-medium">
+          <UIcon name="i-lucide-timer" class="size-4" />
+          ~{{ prepMinutes }} min
+        </span>
+        <span v-if="restaurant.city" class="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-elevated px-3 py-1.5 text-sm font-medium">
+          <UIcon name="i-lucide-map-pin" class="size-4" />
+          {{ restaurant.city }}
+        </span>
+      </div>
     </div>
   </section>
 </template>

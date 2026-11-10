@@ -26,6 +26,18 @@ watch(
 );
 
 const notes = ref('');
+
+// ─── Retrait d'articles ───
+const clearOpen = ref(false);
+function removeLine(key: string, name: string) {
+  cart.remove(key);
+  toast.add({ title: `${name} retiré du panier`, color: 'neutral', icon: 'i-lucide-trash-2', duration: 2000 });
+}
+function clearCart() {
+  cart.clear();
+  clearOpen.value = false;
+  toast.add({ title: 'Panier vidé', color: 'neutral', icon: 'i-lucide-trash-2', duration: 2000 });
+}
 const showNotes = ref(false);
 
 // Articles retirés du menu ou épuisés depuis leur ajout.
@@ -187,7 +199,20 @@ const modeLabel = computed(() =>
       :title="cart.appendTarget ? `Ajout à la commande n°${cart.appendTarget.number}` : 'Mon panier'"
       :subtitle="venue.restaurant?.name"
       :back="`/r/${slug}`"
-    />
+    >
+      <template v-if="cart.count" #right>
+        <UButton color="error" variant="ghost" icon="i-lucide-trash-2" label="Vider" @click="clearOpen = true" />
+      </template>
+    </AppTopBar>
+
+    <UModal v-model:open="clearOpen" title="Vider le panier ?" :description="`Les ${cart.count} article(s) seront retirés.`">
+      <template #footer>
+        <div class="flex w-full justify-end gap-2">
+          <UButton color="neutral" variant="ghost" label="Annuler" @click="clearOpen = false" />
+          <UButton color="error" icon="i-lucide-trash-2" label="Vider le panier" @click="clearCart" />
+        </div>
+      </template>
+    </UModal>
 
     <div v-if="status === 'pending' && !venue.restaurant" class="space-y-3 p-4">
       <USkeleton v-for="n in 3" :key="n" class="h-16 w-full" />
@@ -221,7 +246,18 @@ const modeLabel = computed(() =>
           <li v-for="line in cart.lines" :key="line.key" class="flex gap-3 py-3">
             <img v-if="line.image" :src="line.image" alt="" class="size-14 shrink-0 rounded-lg object-cover">
             <div class="min-w-0 flex-1">
-              <p class="font-medium text-highlighted">{{ line.name }}</p>
+              <div class="flex items-start gap-2">
+                <p class="min-w-0 flex-1 font-medium text-highlighted">{{ line.name }}</p>
+                <UButton
+                  icon="i-lucide-trash-2"
+                  color="neutral"
+                  variant="ghost"
+                  size="sm"
+                  class="-mt-1 -mr-2 text-muted hover:text-error"
+                  :aria-label="`Retirer ${line.name} du panier`"
+                  @click="removeLine(line.key, line.name)"
+                />
+              </div>
               <p v-if="line.optionLabels.length" class="text-xs text-muted">{{ line.optionLabels.join(' · ') }}</p>
               <p v-if="line.notes" class="text-xs text-muted italic">« {{ line.notes }} »</p>
               <div class="mt-2 flex items-center justify-between">

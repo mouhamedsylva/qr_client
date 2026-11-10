@@ -1,6 +1,6 @@
 import { useLocalStorage } from '@vueuse/core';
 import { defineStore } from 'pinia';
-import type { MenuItem, OrderMode, PublicMenu, PublicRestaurant, QrResolution } from '~/types/api';
+import type { MenuCategory, MenuItem, OrderMode, PublicMenu, PublicRestaurant, QrResolution } from '~/types/api';
 
 /** Table scannée, mémorisée pour retrouver le contexte après un rechargement. */
 interface TableContext {
@@ -49,11 +49,32 @@ export const useVenueStore = defineStore('venue', () => {
     return map;
   });
 
+  /**
+   * Menu normalisé : les listes facultatives (photos, allergènes, régimes,
+   * options) peuvent arriver à null, par exemple pour des plats importés sans photo.
+   */
+  function normalizeMenu(raw: PublicMenu): PublicMenu {
+    const list = <T>(v: T[] | null | undefined): T[] => (Array.isArray(v) ? v : []);
+    const item = (i: MenuItem): MenuItem => ({
+      ...i,
+      images: list(i.images),
+      allergens: list(i.allergens),
+      dietaryTags: list(i.dietaryTags),
+      optionGroups: list(i.optionGroups).map((g) => ({ ...g, options: list(g.options) })),
+    });
+    const category = (c: MenuCategory): MenuCategory => ({
+      ...c,
+      items: list(c.items).map(item),
+      children: list(c.children).map(category),
+    });
+    return { ...raw, categories: list(raw.categories).map(category) };
+  }
+
   /** Point d'entrée du QR : établissement, table et menu en un seul appel. */
   async function resolveQr(token: string) {
     const res = await api<QrResolution>(`/public/qr/${encodeURIComponent(token)}`, { silent: true });
     restaurant.value = res.restaurant;
-    menu.value = res.menu;
+    menu.value = normalizeMenu(res.menu);
     tableCtx.value = { slug: res.restaurant.slug, qrToken: token, table: res.table, scannedAt: Date.now() };
     return res;
   }
@@ -66,7 +87,7 @@ export const useVenueStore = defineStore('venue', () => {
       api<PublicMenu>(`/public/restaurants/${encodeURIComponent(target)}/menu`, { silent: true }),
     ]);
     restaurant.value = r;
-    menu.value = m;
+    menu.value = normalizeMenu(m);
   }
 
   /** Disponibilités à jour (après un refus pour article épuisé, par exemple). */

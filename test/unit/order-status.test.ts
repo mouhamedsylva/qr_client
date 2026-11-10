@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { slotsLabel, weekSchedule } from '~/utils/hours';
+import { localClock, openingSummary, slotsLabel, weekSchedule } from '~/utils/hours';
 import { canAddItems, canCancel, canReview, isSettled, stepIndex } from '~/utils/order-status';
 import { matches } from '~/utils/text';
 
@@ -40,6 +40,24 @@ describe('horaires', () => {
     expect(slotsLabel(slots, 1)).toBe('12h00 – 15h00 · 19h00 – 01h00');
     expect(slotsLabel(slots, 2)).toBe('Fermé');
   });
+  it('résume l’état d’ouverture', () => {
+    // Lundi 13h : ouvert jusqu'à 15h.
+    expect(openingSummary(slots, 1, 13 * 60, true)).toBe('Ouvert · ferme à 15h00');
+    // Lundi 16h : fermé, réouverture à 19h.
+    expect(openingSummary(slots, 1, 16 * 60, false)).toBe('Fermé · ouvre à 19h00');
+    // Mardi 0h30 : créneau du lundi soir qui court jusqu'à 1h.
+    expect(openingSummary(slots, 2, 30, true)).toBe('Ouvert · ferme à 01h00');
+    // Mardi 10h : prochain créneau lundi prochain.
+    expect(openingSummary(slots, 2, 10 * 60, false)).toBe('Fermé · ouvre lundi à 12h00');
+    // Dimanche 10h : ouvre demain.
+    expect(openingSummary(slots, 0, 10 * 60, false)).toBe('Fermé · ouvre demain à 12h00');
+  });
+
+  it('lit l’heure locale du restaurant', () => {
+    // 2026-11-09 est un lundi ; 12h00 UTC = 12h00 à Dakar.
+    expect(localClock('Africa/Dakar', new Date('2026-11-09T12:00:00Z'))).toEqual({ day: 1, minutes: 720 });
+  });
+
   it('commence la semaine le lundi', () => {
     expect(weekSchedule(slots).map((d) => d.day)).toEqual([1, 2, 3, 4, 5, 6, 0]);
   });
