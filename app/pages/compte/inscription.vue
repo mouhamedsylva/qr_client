@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import * as z from 'zod';
 import type { FormSubmitEvent } from '@nuxt/ui';
+import { isValidPhone, PHONE_ERROR } from '~/utils/phone';
 
 useHead({ title: 'Créer un compte' });
 
@@ -10,11 +11,7 @@ const schema = z.object({
   firstName: z.string().trim().min(1, 'Prénom requis').max(100),
   lastName: z.string().trim().min(1, 'Nom requis').max(100),
   email: z.string().trim().pipe(z.email('Adresse email invalide')),
-  phone: z
-    .string()
-    .trim()
-    .regex(/^(\+?[0-9 ]{8,16})?$/, 'Format attendu : +221 77 123 45 67')
-    .optional(),
+  phone: z.string().refine((v) => !v || isValidPhone(v), PHONE_ERROR).optional(),
   password: z
     .string()
     .regex(/^(?=.*[A-Za-z])(?=.*\d).{8,128}$/, '8 caractères minimum, dont au moins une lettre et un chiffre'),
@@ -38,7 +35,7 @@ async function onSubmit(event: FormSubmitEvent<Schema>) {
   loading.value = true;
   try {
     const { phone, ...rest } = event.data;
-    await auth.register({ ...rest, ...(phone && { phone: phone.replace(/\s/g, '') }) });
+    await auth.register({ ...rest, ...(phone && { phone }) });
     await navigateTo('/compte', { replace: true });
   } catch (err) {
     error.value = apiErrorMessage(err);
@@ -67,7 +64,7 @@ async function onSubmit(event: FormSubmitEvent<Schema>) {
           <UInput v-model="state.email" type="email" autocomplete="email" class="w-full" size="lg" />
         </UFormField>
         <UFormField label="Téléphone" name="phone" hint="Facultatif">
-          <UInput v-model="state.phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="+221 77 123 45 67" class="w-full" size="lg" />
+          <PhoneInput v-model="state.phone" class="w-full" size="lg" />
         </UFormField>
         <UFormField label="Mot de passe" name="password" help="8 caractères minimum, avec au moins une lettre et un chiffre.">
           <UInput v-model="state.password" type="password" autocomplete="new-password" class="w-full" size="lg" />

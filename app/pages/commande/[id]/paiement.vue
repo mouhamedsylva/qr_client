@@ -3,6 +3,7 @@ import { useLocalStorage } from '@vueuse/core';
 import type { Stripe, StripeElements } from '@stripe/stripe-js';
 import type { PaymentInitiation, PaymentSummary } from '~/types/api';
 import { fromMinorUnits, toMinorUnits } from '~/utils/format';
+import { isValidPhone, PHONE_ERROR, toInternational } from '~/utils/phone';
 
 const route = useRoute();
 const orders = useOrdersStore();
@@ -53,10 +54,10 @@ const OPERATORS = [
 type Choice = 'WAVE' | 'ORANGE_MONEY' | 'FREE_MONEY' | 'CARD';
 const choice = ref<Choice>('WAVE');
 const contact = useLocalStorage('qro.contact', { name: '', phone: '' });
-const payerPhone = ref(contact.value.phone);
+const payerPhone = ref(contact.value.phone ? toInternational(contact.value.phone) : '');
 const cardEnabled = computed(() => !!config.public.stripePublishableKey);
 
-const phoneValid = computed(() => /^\+?[0-9 ]{8,16}$/.test(payerPhone.value));
+const phoneValid = computed(() => isValidPhone(payerPhone.value));
 const canPay = computed(() => amount.value > 0 && amount.value <= due.value && (choice.value === 'CARD' || phoneValid.value));
 
 const paying = ref(false);
@@ -111,7 +112,7 @@ async function pay() {
   const isCard = choice.value === 'CARD';
   const body = isCard
     ? { method: 'CARD', amount: amount.value }
-    : { method: 'MOBILE_MONEY', operator: choice.value, payerPhone: payerPhone.value.replace(/\s/g, ''), amount: amount.value };
+    : { method: 'MOBILE_MONEY', operator: choice.value, payerPhone: payerPhone.value, amount: amount.value };
   const sig = JSON.stringify(body);
   if (attempt?.sig !== sig) attempt = { key: uuid(), sig };
   try {
@@ -242,9 +243,9 @@ async function pay() {
         <UFormField
           v-if="choice !== 'CARD'"
           label="Numéro du compte à débiter"
-          :error="payerPhone && !phoneValid ? 'Format attendu : +221 77 123 45 67' : undefined"
+          :error="payerPhone && !phoneValid ? PHONE_ERROR : undefined"
         >
-          <UInput v-model="payerPhone" type="tel" inputmode="tel" autocomplete="tel" placeholder="+221 77 123 45 67" class="w-full" size="lg" />
+          <PhoneInput v-model="payerPhone" class="w-full" size="lg" />
         </UFormField>
       </main>
 

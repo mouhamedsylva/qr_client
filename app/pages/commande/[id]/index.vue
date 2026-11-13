@@ -183,7 +183,7 @@ const statusBg: Record<string, string> = {
         </p>
         <OrderTimeline v-if="!isFailed(order.status)" :status="order.status" :mode="order.mode" class="mt-5" />
         <p class="mt-4 text-xs text-muted">
-          {{ MODE_LABEL[order.mode] }}<span v-if="order.table"> · {{ order.table.label }}</span> · passée à {{ time(order.createdAt) }}
+          {{ MODE_LABEL[order.mode] }}<span v-if="order.table"> · {{ order.table.label }}</span><span v-else-if="order.mode === 'DINE_IN'"> · Comptoir</span> · passée à {{ time(order.createdAt) }}
         </p>
       </section>
 

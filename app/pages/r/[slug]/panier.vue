@@ -2,7 +2,8 @@
 import { useDebounceFn, useLocalStorage } from '@vueuse/core';
 import type { CreatedOrder, CustomerOrder, Quote } from '~/types/api';
 import { MAX_QUANTITY } from '~/utils/cart';
-import { MODE_LABEL } from '~/utils/order-status';
+import { isValidPhone, PHONE_ERROR, toInternational } from '~/utils/phone';
+import { nameRequired, serviceWhere } from '~/utils/order-mode';
 
 const venue = useVenueStore();
 const cart = useCartStore();
@@ -17,6 +18,10 @@ useHead({ title: () => (cart.appendTarget ? 'Ajouter à ma commande' : 'Mon pani
 
 // Coordonnées mémorisées sur l'appareil pour la prochaine commande.
 const contact = useLocalStorage('qro.contact', { name: '', phone: '' });
+// Numéro enregistré avant le format international (ex. « 77 123 45 67 ») : converti.
+if (contact.value.phone && !contact.value.phone.startsWith('+')) {
+  contact.value = { ...contact.value, phone: toInternational(contact.value.phone) };
+}
 watch(
   () => auth.user,
   (u) => {
@@ -66,11 +71,20 @@ const quote = ref<Quote | null>(null);
 const quoteError = ref<{ code?: string; message: string } | null>(null);
 const quoting = ref(false);
 
+/** Mode choisi par le client ; QR de la table ou du comptoir, sinon lien du menu. */
 function orderContext() {
   return venue.qrToken
     ? { mode: venue.mode, qrToken: venue.qrToken }
-    : { mode: 'TAKEAWAY' as const, restaurantSlug: venue.slug! };
+    : { mode: venue.mode, restaurantSlug: venue.slug! };
 }
+
+// ─── Sur place / à emporter ───
+const MODES = [
+  { value: 'DINE_IN' as const, label: 'Sur place', icon: 'i-lucide-utensils' },
+  { value: 'TAKEAWAY' as const, label: 'À emporter', icon: 'i-lucide-shopping-bag' },
+];
+const needsName = computed(() => nameRequired(venue.mode, venue.table));
+const nameMissing = computed(() => needsName.value && !contact.value.name.trim());
 
 function body(extra: Record<string, unknown> = {}) {
   return {
@@ -106,7 +120,7 @@ async function refreshQuote() {
   }
 }
 const debouncedQuote = useDebounceFn(refreshQuote, 350);
-watch([() => JSON.stringify(cart.payload), tipAmount, promoCode, () => venue.slug], () => void debouncedQuote(), { immediate: true });
+watch([() => JSON.stringify(cart.payload), tipAmount, promoCode, () => venue.slug, () => venue.mode], () => void debouncedQuote(), { immediate: true });
 
 function applyPromo() {
   promoError.value = null;
@@ -125,7 +139,7 @@ watch(() => JSON.stringify(cart.payload), () => (pendingKey = null));
 const sending = ref(false);
 const sendError = ref<string | null>(null);
 
-const phoneValid = computed(() => !contact.value.phone || /^\+?[0-9 ]{8,16}$/.test(contact.value.phone));
+const phoneValid = computed(() => !contact.value.phone || isValidPhone(contact.value.phone));
 
 async function handleSendError(err: unknown) {
   const code = apiErrorCode(err);
@@ -162,7 +176,7 @@ async function send() {
       method: 'POST',
       body: body({
         ...(contact.value.name.trim() && { customerName: contact.value.name.trim() }),
-        ...(contact.value.phone.trim() && { customerPhone: contact.value.phone.replace(/\s/g, '') }),
+        ...(contact.value.phone && { customerPhone: contact.value.phone }),
         ...(notes.value.trim() && { notes: notes.value.trim() }),
       }),
       headers: { 'Idempotency-Key': pendingKey },
@@ -187,9 +201,12 @@ async function send() {
 }
 
 const closed = computed(() => quoteError.value?.code === 'RESTAURANT_CLOSED' || venue.restaurant?.isOpen === false);
-const canSend = computed(() => cart.count > 0 && phoneValid.value && !sending.value && (!!cart.appendTarget || (!!quote.value && !closed.value)));
-const modeLabel = computed(() =>
-  venue.table?.kind === 'TABLE' ? `${MODE_LABEL.DINE_IN} · ${venue.table.label}` : MODE_LABEL.TAKEAWAY,
+const canSend = computed(
+  () =>
+    cart.count > 0 &&
+    phoneValid.value &&
+    !sending.value &&
+    (!!cart.appendTarget || (!!quote.value && !closed.value && !nameMissing.value)),
 );
 </script>
 
@@ -278,19 +295,43 @@ const modeLabel = computed(() =>
         <template v-if="!cart.appendTarget">
           <!-- Mode et coordonnées -->
           <section class="space-y-3">
-            <div class="flex items-center gap-2 rounded-xl bg-elevated px-3 py-2.5 text-sm">
-              <UIcon :name="venue.table?.kind === 'TABLE' ? 'i-lucide-armchair' : 'i-lucide-shopping-bag'" class="size-5 text-primary" />
-              <span class="font-medium">{{ modeLabel }}</span>
+            <div role="radiogroup" aria-label="Sur place ou à emporter" class="grid grid-cols-2 gap-2">
+              <button
+                v-for="m in MODES"
+                :key="m.value"
+                type="button"
+                role="radio"
+                :aria-checked="venue.mode === m.value"
+                class="flex items-center gap-3 rounded-xl border-2 px-3 py-3 text-left transition"
+                :class="venue.mode === m.value ? 'border-primary bg-primary/5' : 'border-default hover:border-accented'"
+                @click="venue.setOrderMode(m.value)"
+              >
+                <span
+                  class="flex size-10 shrink-0 items-center justify-center rounded-full"
+                  :class="venue.mode === m.value ? 'bg-primary text-white' : 'bg-elevated text-muted'"
+                >
+                  <UIcon :name="m.icon" class="size-5" />
+                </span>
+                <span class="min-w-0">
+                  <span class="block font-semibold text-highlighted">{{ m.label }}</span>
+                  <span class="block truncate text-xs text-muted">{{ serviceWhere(m.value, venue.table) }}</span>
+                </span>
+              </button>
             </div>
-            <UFormField label="Votre prénom" :hint="venue.table?.kind === 'TABLE' ? 'Facultatif' : 'Pour vous appeler au comptoir'">
+            <UFormField
+              label="Votre prénom"
+              :required="needsName"
+              :hint="needsName ? 'Pour vous appeler quand c’est prêt' : 'Facultatif'"
+              :error="nameMissing ? 'Indiquez votre prénom pour qu’on vous appelle' : undefined"
+            >
               <UInput v-model="contact.name" autocomplete="given-name" :maxlength="100" class="w-full" size="lg" />
             </UFormField>
             <UFormField
               label="Téléphone"
               hint="Facultatif"
-              :error="!phoneValid && 'Format attendu : +221 77 123 45 67'"
+              :error="!phoneValid && PHONE_ERROR"
             >
-              <UInput v-model="contact.phone" type="tel" autocomplete="tel" inputmode="tel" placeholder="+221 77 123 45 67" class="w-full" size="lg" />
+              <PhoneInput v-model="contact.phone" class="w-full" size="lg" />
             </UFormField>
             <div>
               <UButton

@@ -15,6 +15,8 @@ const props = defineProps<{
   prepMinutes?: number | null;
 }>();
 defineEmits<{ info: [] }>();
+const venue = useVenueStore();
+const modeOpen = ref(false);
 
 const opening = computed(() => {
   const { day, minutes } = localClock(props.restaurant.timezone);
@@ -22,7 +24,6 @@ const opening = computed(() => {
     ? 'Fermeture exceptionnelle'
     : openingSummary(props.restaurant.openingHours, day, minutes, props.restaurant.isOpen);
 });
-const mode = computed(() => (props.tableLabel ? `Sur place · ${props.tableLabel}` : 'À emporter'));
 </script>
 
 <template>
@@ -58,10 +59,31 @@ const mode = computed(() => (props.tableLabel ? `Sur place · ${props.tableLabel
 
       <!-- Pastilles -->
       <div class="no-scrollbar mt-3 flex gap-2 overflow-x-auto">
-        <span class="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-elevated px-3 py-1.5 text-sm font-medium">
-          <UIcon :name="tableLabel ? 'i-lucide-armchair' : 'i-lucide-shopping-bag'" class="size-4" />
-          {{ counter ? 'À emporter · comptoir' : mode }}
-        </span>
+        <UPopover v-model:open="modeOpen">
+          <button type="button" class="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-elevated px-3 py-1.5 text-sm font-medium hover:bg-accented/60">
+            <UIcon :name="venue.mode === 'DINE_IN' ? 'i-lucide-utensils' : 'i-lucide-shopping-bag'" class="size-4" />
+            {{ venue.modeLabel }}
+            <UIcon name="i-lucide-chevron-down" class="size-3.5 text-muted" />
+          </button>
+          <template #content>
+            <div class="w-56 p-1.5">
+              <button
+                v-for="m in [
+                  { value: 'DINE_IN' as const, label: 'Sur place', icon: 'i-lucide-utensils' },
+                  { value: 'TAKEAWAY' as const, label: 'À emporter', icon: 'i-lucide-shopping-bag' },
+                ]"
+                :key="m.value"
+                type="button"
+                class="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm hover:bg-elevated"
+                @click="venue.setOrderMode(m.value); modeOpen = false"
+              >
+                <UIcon :name="m.icon" class="size-4" />
+                <span class="flex-1 font-medium">{{ m.label }}</span>
+                <UIcon v-if="venue.mode === m.value" name="i-lucide-check" class="size-4 text-primary" />
+              </button>
+            </div>
+          </template>
+        </UPopover>
         <span v-if="prepMinutes" class="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-elevated px-3 py-1.5 text-sm font-medium">
           <UIcon name="i-lucide-timer" class="size-4" />
           ~{{ prepMinutes }} min

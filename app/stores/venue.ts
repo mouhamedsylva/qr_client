@@ -1,4 +1,5 @@
-import { useLocalStorage } from '@vueuse/core';
+import { useLocalStorage, useSessionStorage } from '@vueuse/core';
+import { defaultOrderMode, modeSummary } from '~/utils/order-mode';
 import { defineStore } from 'pinia';
 import type { MenuCategory, MenuItem, OrderMode, PublicMenu, PublicRestaurant, QrResolution } from '~/types/api';
 
@@ -37,8 +38,17 @@ export const useVenueStore = defineStore('venue', () => {
   });
   const qrToken = computed(() => (table.value ? tableCtx.value!.qrToken : null));
 
-  /** Sur place uniquement depuis le QR d'une table ; sinon à emporter. */
-  const mode = computed<OrderMode>(() => (table.value?.kind === 'TABLE' ? 'DINE_IN' : 'TAKEAWAY'));
+  /**
+   * Mode choisi par le client (sur place / à emporter), mémorisé par restaurant
+   * pendant la visite. Par défaut : sur place à une table, à emporter sinon.
+   */
+  const chosenModes = useSessionStorage<Record<string, OrderMode>>('qro.orderMode', {});
+  const mode = computed<OrderMode>(() => (slug.value && chosenModes.value[slug.value]) || defaultOrderMode(table.value));
+  function setOrderMode(next: OrderMode) {
+    if (slug.value) chosenModes.value = { ...chosenModes.value, [slug.value]: next };
+  }
+  /** « Sur place · Table 4 », « Sur place · Comptoir » ou « À emporter ». */
+  const modeLabel = computed(() => modeSummary(mode.value, table.value));
 
   const items = computed(() => {
     const map = new Map<string, MenuItem>();
@@ -99,5 +109,5 @@ export const useVenueStore = defineStore('venue', () => {
     tableCtx.value = null;
   }
 
-  return { restaurant, menu, slug, currency, locale, table, qrToken, mode, items, resolveQr, load, refreshMenu, forgetTable };
+  return { restaurant, menu, slug, currency, locale, table, qrToken, mode, setOrderMode, modeLabel, items, resolveQr, load, refreshMenu, forgetTable };
 });
